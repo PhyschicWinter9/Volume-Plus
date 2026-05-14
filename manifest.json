@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Volume+",
+  "version": "2.0.0",
+  "description": "Custom volume control for YouTube — go beyond 100%. By relaxlikes.com",
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": ["https://www.youtube.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "RELAXLIKES Volume+"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["injected.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "edge": {
+      "browser_action_next_to_address_bar": true
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
