@@ -279,6 +279,26 @@ document.addEventListener('yt-navigate-finish', () => {
 });
 
 // =============================================
+//  GLOBAL ARROW KEY VOLUME (Up +5 / Down -5)
+//  Active only after clicking inside the player (same as YouTube).
+// =============================================
+
+let playerFocused = false;
+
+document.addEventListener('mousedown', e => {
+  playerFocused = !!e.target.closest('#movie_player');
+}, true);
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  if (!playerFocused) return;
+  const tag = document.activeElement && document.activeElement.tagName.toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || (document.activeElement && document.activeElement.isContentEditable)) return;
+  e.preventDefault();
+  setVolume(currentVolume + (e.key === 'ArrowUp' ? 5 : -5));
+}, true);
+
+// =============================================
 //  INIT — restore saved settings
 // =============================================
 
