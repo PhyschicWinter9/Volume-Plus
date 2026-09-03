@@ -1,5 +1,13 @@
 // RELAXLIKES Volume+ — popup.js
 
+// Load the custom font asynchronously so it never blocks the popup's
+// initial paint (extension pages also forbid the old onload="" attribute
+// trick — inline event handlers violate the default CSP).
+const fontLink = document.createElement("link");
+fontLink.rel  = "stylesheet";
+fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@500;700;800&display=swap";
+document.head.appendChild(fontLink);
+
 const volNum       = document.getElementById("volNum");
 const volDisplay   = document.querySelector(".vol-display");
 const volSlider    = document.getElementById("volSlider");
@@ -198,6 +206,12 @@ async function sendVolume(vol) {
   vol = Math.max(0, Math.min(max, Math.round(vol)));
   updateDisplay(vol);
 
+  // Persist immediately from the popup itself — don't rely solely on
+  // content.js relaying it back, since that message silently fails
+  // when content.js isn't alive on the tab (e.g. right after the
+  // extension reloads, before the YouTube page is refreshed).
+  chrome.storage.local.set({ rl_volume: vol });
+
   const tab = ytTab || await getYTTab();
   if (!tab) { setStatus("Open YouTube to control volume", ""); return; }
   ytTab = tab;
@@ -271,10 +285,15 @@ async function init() {
   }
   ytTab = tab;
 
-  // Ask content.js for the authoritative tracked volume
+  // Ask content.js for the authoritative tracked volume — but don't let a
+  // stale/unresponsive content script (e.g. right after an extension
+  // reload, before the tab is refreshed) hold up the popup.
   let vol = stored.rl_volume ?? 100;
   try {
-    const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_VOLUME' });
+    const response = await Promise.race([
+      chrome.tabs.sendMessage(tab.id, { type: 'GET_VOLUME' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 300))
+    ]);
     if (response?.volume != null) vol = response.volume;
   } catch (_) {}
   updateDisplay(vol);
