@@ -203,19 +203,33 @@ function buildWidget() {
   wrap.appendChild(input);
   wrap.appendChild(sym);
 
-  // Slider drag
-  let dragging = false;
+  // Slider drag — rAF-gated so a fast drag coalesces to at most one
+  // setVolume() (and its storage write) per frame instead of one per
+  // mousemove pixel.
+  let dragging   = false;
+  let dragRaf    = null;
+  let dragVolume = null;
+
   function volFromX(clientX) {
     const rect = track.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     return Math.round(frac * (boostEnabled ? 300 : 100));
   }
 
+  function scheduleDragVolume(v) {
+    dragVolume = v;
+    if (dragRaf) return;
+    dragRaf = requestAnimationFrame(() => {
+      dragRaf = null;
+      setVolume(dragVolume);
+    });
+  }
+
   sliderWrap.addEventListener('mousedown', e => {
     e.preventDefault(); e.stopPropagation();
-    dragging = true; setVolume(volFromX(e.clientX));
+    dragging = true; scheduleDragVolume(volFromX(e.clientX));
   });
-  window.addEventListener('mousemove',  e => { if (dragging) setVolume(volFromX(e.clientX)); });
+  window.addEventListener('mousemove',  e => { if (dragging) scheduleDragVolume(volFromX(e.clientX)); });
   window.addEventListener('mouseup',    () => { dragging = false; });
 
   // Text input
@@ -262,20 +276,38 @@ function syncUI(pct) {
 // =============================================
 
 function tryInjectUI() {
-  if (document.getElementById(WIDGET_ID)) return;
+  if (document.getElementById(WIDGET_ID)) return true;
   const volumeArea = document.querySelector('.ytp-volume-area');
-  if (!volumeArea) return;
+  if (!volumeArea) return false;
   injectStyle();
   volumeArea.appendChild(buildWidget());
   syncUI(currentVolume);
+  return true;
 }
 
-const observer = new MutationObserver(() => tryInjectUI());
-observer.observe(document.body, { childList: true, subtree: true });
-tryInjectUI();
+// Watching the whole document for the extension's entire lifetime is
+// expensive — YouTube mutates the DOM constantly. Only observe while the
+// widget is actually missing (initial player load, or right after an SPA
+// navigation that rebuilt the player controls), and disconnect the moment
+// it's back.
+let observer = null;
+
+function watchForPlayer() {
+  if (observer || tryInjectUI()) return;
+  observer = new MutationObserver(() => {
+    if (tryInjectUI()) {
+      observer.disconnect();
+      observer = null;
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+watchForPlayer();
 
 document.addEventListener('yt-navigate-finish', () => {
   setTimeout(() => setVolume(currentVolume), 300);
+  watchForPlayer();
 });
 
 // =============================================

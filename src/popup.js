@@ -9,7 +9,7 @@ fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&f
 document.head.appendChild(fontLink);
 
 const volNum       = document.getElementById("volNum");
-const volDisplay   = document.querySelector(".vol-display");
+const volDisplay   = document.getElementById("volDisplay");
 const volSlider    = document.getElementById("volSlider");
 const customInput  = document.getElementById("customInput");
 const customMax    = document.getElementById("customMax");
@@ -19,14 +19,16 @@ const boostSub     = document.getElementById("boostSub");
 const sliderLabels = document.getElementById("sliderLabels");
 const status       = document.getElementById("status");
 const presetRow    = document.getElementById("presetRow");
+const muteBtn      = document.getElementById("muteBtn");
 
 function getPresets() {
   return document.querySelectorAll(".preset");
 }
 
-let currentVol   = 100;
-let boostEnabled = false;
-let ytTab        = null;
+let currentVol      = 100;
+let lastNonZeroVol  = 100; // remembered for the mute/unmute toggle
+let boostEnabled    = false;
+let ytTab           = null;
 
 // =============================================
 //  ANIMATED NUMBER COUNTER
@@ -98,6 +100,7 @@ function updateDisplay(vol) {
 
   const prev = currentVol;
   currentVol = vol;
+  if (vol > 0) lastNonZeroVol = vol;
 
   // Animated number
   animateNumber(prev, vol);
@@ -107,6 +110,10 @@ function updateDisplay(vol) {
 
   // Display card glow when boosted
   volDisplay.classList.toggle("boosted", vol > 100);
+
+  // Mute button state
+  muteBtn.textContent = vol === 0 ? "🔇" : "🔊";
+  muteBtn.classList.toggle("muted", vol === 0);
 
   // Slider (set max before value)
   volSlider.max   = max;
@@ -153,9 +160,22 @@ function applyMax() {
 // =============================================
 
 async function getYTTab() {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tab  = tabs[0];
-  return tab?.url?.includes("youtube.com") ? tab : null;
+  const tabs   = await chrome.tabs.query({ active: true, currentWindow: true });
+  const active = tabs[0];
+  if (active?.url?.includes("youtube.com")) return active;
+
+  // The focused tab isn't YouTube — look for one elsewhere so the popup
+  // still works while YouTube keeps playing in a background tab. Prefer
+  // whichever YouTube tab is actually making sound.
+  try {
+    const ytTabs = await chrome.tabs.query({ url: "*://www.youtube.com/*" });
+    if (!ytTabs.length) return null;
+    const best = ytTabs.find(t => t.audible) || ytTabs[0];
+    best.__background = true;
+    return best;
+  } catch (_) {
+    return null;
+  }
 }
 
 // =============================================
@@ -167,7 +187,7 @@ async function applyVolumeInPage(tabId, vol) {
 
   await chrome.scripting.executeScript({
     target: { tabId },
-    func: (volume) => {
+    func: (volume, realPct) => {
       const video = document.querySelector(".html5-main-video") || document.querySelector("video");
       if (!video) return;
 
@@ -190,27 +210,76 @@ async function applyVolumeInPage(tabId, vol) {
           panel.setAttribute("aria-valuetext", `${volume}%`);
         }
       }
+
+      // Mirror to localStorage directly so the value survives a refresh
+      // even if the SET_VOLUME message to content.js below never lands
+      // (e.g. content.js isn't alive on this tab yet).
+      try { localStorage.setItem("rl_volume", String(realPct)); } catch (_) {}
     },
-    args: [nativeVol]
+    args: [nativeVol, vol]
   });
 
   chrome.tabs.sendMessage(tabId, { type: "SET_VOLUME", volume: vol }, () => {});
 }
 
 // =============================================
+//  READ volume back from the page (authoritative)
+// =============================================
+
+// content.js's in-memory currentVolume / chrome.storage are relayed state
+// and can lag behind a change made directly on the player (e.g. dragging
+// the in-page widget) if that relay hiccups. The player itself is the
+// source of truth — read it straight from the DOM instead of trusting
+// only the relay.
+async function readYTVolume(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const player = document.querySelector('#movie_player');
+        if (player && typeof player.getVolume === 'function') {
+          const muted = typeof player.isMuted === 'function' && player.isMuted();
+          return muted ? 0 : player.getVolume();
+        }
+        const video = document.querySelector(".html5-main-video") || document.querySelector("video");
+        if (!video) return null;
+        return Math.round((video.muted ? 0 : video.volume) * 100);
+      }
+    });
+    return results?.[0]?.result ?? null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// =============================================
 //  SEND VOLUME
 // =============================================
 
-async function sendVolume(vol) {
+// Persist to chrome.storage.local from the popup itself — don't rely
+// solely on content.js relaying it back, since that message silently
+// fails when content.js isn't alive on the tab (e.g. right after the
+// extension reloads, before the YouTube page is refreshed).
+//
+// `immediate` writes straight away (discrete actions: presets, custom
+// input, mute, boost). Drag input instead debounces — otherwise a fast
+// slider drag would flood chrome.storage with a write per pixel — but
+// still flushes right away if nothing calls it again within 120ms, and
+// callers always flush explicitly on drag release (see volSlider "change").
+let persistTimer = null;
+
+function persistVolume(vol, immediate = true) {
+  clearTimeout(persistTimer);
+  const write = () => chrome.storage.local.set({ rl_volume: vol, rl_last_nonzero: lastNonZeroVol });
+  if (immediate) write();
+  else persistTimer = setTimeout(write, 120);
+}
+
+async function sendVolume(vol, { immediate = true } = {}) {
   const max = boostEnabled ? 300 : 100;
   vol = Math.max(0, Math.min(max, Math.round(vol)));
   updateDisplay(vol);
-
-  // Persist immediately from the popup itself — don't rely solely on
-  // content.js relaying it back, since that message silently fails
-  // when content.js isn't alive on the tab (e.g. right after the
-  // extension reloads, before the YouTube page is refreshed).
-  chrome.storage.local.set({ rl_volume: vol });
+  persistVolume(vol, immediate);
 
   const tab = ytTab || await getYTTab();
   if (!tab) { setStatus("Open YouTube to control volume", ""); return; }
@@ -231,7 +300,45 @@ async function sendVolume(vol) {
 //  EVENT LISTENERS
 // =============================================
 
-volSlider.addEventListener("input", () => sendVolume(+volSlider.value));
+// rAF-gate the slider drag: some browsers fire many "input" events per
+// frame while dragging, and each one used to trigger a fresh
+// chrome.scripting.executeScript call — coalesce to at most one apply
+// per frame, then flush storage immediately on release ("change").
+let dragRaf     = null;
+let pendingDrag = null;
+
+volSlider.addEventListener("input", () => {
+  pendingDrag = +volSlider.value;
+  if (dragRaf) return;
+  dragRaf = requestAnimationFrame(() => {
+    dragRaf = null;
+    sendVolume(pendingDrag, { immediate: false });
+  });
+});
+volSlider.addEventListener("change", () => sendVolume(+volSlider.value, { immediate: true }));
+
+// Scroll wheel on the volume display — mirrors the in-page widget.
+volDisplay.addEventListener("wheel", e => {
+  e.preventDefault();
+  sendVolume(currentVol + (e.deltaY < 0 ? 5 : -5));
+}, { passive: false });
+
+// Mute / unmute — remembers the last non-zero volume.
+muteBtn.addEventListener("click", () => {
+  sendVolume(currentVol > 0 ? 0 : (lastNonZeroVol || 100));
+});
+
+// Arrow-key fine control anywhere in the popup that isn't a text field
+// (Shift = fine step, plain = coarse step) — mirrors the in-page widget's
+// arrow-key behavior so the popup doesn't need precise slider dragging.
+document.addEventListener("keydown", e => {
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  if (tag === "input" || tag === "textarea") return;
+  e.preventDefault();
+  const step = e.shiftKey ? 1 : 5;
+  sendVolume(currentVol + (e.key === "ArrowUp" ? step : -step));
+});
 
 customInput.addEventListener("keydown", e => {
   e.stopPropagation();
@@ -266,8 +373,9 @@ boostToggle.addEventListener("change", async () => {
 // =============================================
 
 async function init() {
-  const stored = await chrome.storage.local.get(["rl_volume", "rl_boost"]);
-  boostEnabled = !!stored.rl_boost;
+  const stored = await chrome.storage.local.get(["rl_volume", "rl_boost", "rl_last_nonzero"]);
+  boostEnabled   = !!stored.rl_boost;
+  lastNonZeroVol = stored.rl_last_nonzero ?? (stored.rl_volume > 0 ? stored.rl_volume : 100);
 
   boostToggle.checked = boostEnabled;
   boostRow.classList.toggle("active", boostEnabled);
@@ -285,19 +393,30 @@ async function init() {
   }
   ytTab = tab;
 
-  // Ask content.js for the authoritative tracked volume — but don't let a
-  // stale/unresponsive content script (e.g. right after an extension
-  // reload, before the tab is refreshed) hold up the popup.
+  // Read the volume straight from the player — the authoritative source,
+  // not a value relayed through content.js that could be stale if the
+  // relay hiccups (e.g. a change made by dragging the in-page widget).
+  // The native player caps at 100 even while boosted, so trust our
+  // tracked value instead when boost is on and the player reads ~100.
   let vol = stored.rl_volume ?? 100;
-  try {
-    const response = await Promise.race([
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_VOLUME' }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 300))
-    ]);
-    if (response?.volume != null) vol = response.volume;
-  } catch (_) {}
+  const domVol = await readYTVolume(tab.id);
+  if (domVol != null && !(boostEnabled && vol > 100 && domVol >= 99)) {
+    vol = domVol;
+  } else {
+    // DOM read failed (e.g. player not ready yet) — fall back to asking
+    // content.js, but don't let a stale/unresponsive content script
+    // (e.g. right after an extension reload, before the tab is
+    // refreshed) hold up the popup.
+    try {
+      const response = await Promise.race([
+        chrome.tabs.sendMessage(tab.id, { type: 'GET_VOLUME' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 300))
+      ]);
+      if (response?.volume != null) vol = response.volume;
+    } catch (_) {}
+  }
   updateDisplay(vol);
-  setStatus("Ready — adjust below", "ok");
+  setStatus(tab.__background ? "🎧 Controlling YouTube in a background tab" : "Ready — adjust below", "ok");
 }
 
 init();

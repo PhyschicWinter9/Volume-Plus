@@ -1,7 +1,26 @@
 # Changelog — Volume+
-by relaxlikes.com
 
 ---
+
+## [2.2.1] — 2026-09-03
+
+### Fixed
+- **Popup not reflecting a volume change made on the player** — the popup only trusted `chrome.storage.local` and a message relay to `content.js`, which could go stale for player-driven changes (dragging the in-page widget) even though popup-driven changes always worked (that path writes directly). Restored `readYTVolume()` — documented in CLAUDE.md but missing from the actual code — which reads the live volume straight from the YouTube player API instead of relying on relayed state.
+
+## [2.2.0] — 2026-09-03
+
+### Added
+- **Mute / unmute button** on the popup's volume display — remembers your last non-zero volume and restores it on unmute
+- **Background-tab control** — the popup now controls YouTube even when it isn't the focused tab (prefers whichever YouTube tab is actually playing audio), instead of only working when YouTube is the active tab
+- **Keyboard shortcuts in the popup** — ↑/↓ adjusts volume ±5%, Shift+↑/↓ fine-tunes ±1%, from anywhere in the popup that isn't a text field
+- **Scroll wheel** on the popup's volume display, matching the in-page widget's existing wheel support
+
+### Performance
+- Dragging the volume slider (popup and in-page widget) no longer fires a native-volume apply / `chrome.storage` write per pixel of movement — both are now rAF-gated to at most once per animation frame, with an immediate flush on drag release
+- The in-page `MutationObserver` used to watch the entire YouTube page for the extension's whole lifetime; it now disconnects the moment the volume widget is injected and only re-arms around SPA navigation, cutting a large source of ongoing overhead on a DOM as mutation-heavy as YouTube's
+
+### Fixed
+- Closed a persistence gap in the popup's direct volume-apply path: it now also mirrors the value to `localStorage['rl_volume']` so it survives a page refresh even if the message relay to `content.js` fails
 
 ## [2.1.1] — 2026-09-03
 

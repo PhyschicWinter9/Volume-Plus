@@ -52,10 +52,13 @@ YouTube saves/restores from `localStorage["yt-player-volume"]`. Three things pre
 
 | Key | Storage | Written by | Read by | Purpose |
 |---|---|---|---|---|
-| `rl_volume` | `localStorage` | injected.js `persistVolume()` | injected.js startup | Synchronous init before YouTube runs |
-| `rl_volume` | `chrome.storage.local` | content.js `setVolume()` | content.js, popup.js | Persistent across browser sessions |
+| `rl_volume` | `localStorage` | injected.js `persistVolume()`; also popup.js `applyVolumeInPage()` directly (fallback) | injected.js startup | Synchronous init before YouTube runs |
+| `rl_volume` | `chrome.storage.local` | content.js `setVolume()`; popup.js `persistVolume()` | content.js, popup.js | Persistent across browser sessions |
+| `rl_last_nonzero` | `chrome.storage.local` | popup.js `persistVolume()` | popup.js | Remembered pre-mute volume for the mute/unmute toggle |
 | `rl_boost` | `chrome.storage.local` | content.js, popup.js | content.js, popup.js | Boost mode enabled flag |
 | `yt-player-volume` | `localStorage` | YouTube (intercepted) | YouTube | Intercepted and rewritten by us |
+
+**Note:** popup.js's `applyVolumeInPage()` sets live audio via `chrome.scripting.executeScript` (isolated world) independent of `content.js`, and also writes `localStorage['rl_volume']` directly from that same script injection. This closes a gap where a stale/unresponsive `content.js` (e.g. right after an extension reload, before the tab is refreshed) would let live audio change but not survive a refresh.
 
 ---
 
@@ -103,7 +106,9 @@ If `allowSet` is `false` and YouTube tries `video.volume = 0.23`, the setter sil
 
 ## Popup reads volume from YouTube DOM, not JS cache
 
-`readYTVolume()` in popup.js uses `chrome.scripting.executeScript` to read `aria-valuenow` from `.ytp-volume-panel`. This is the authoritative current state — not a cached JS value that could be stale after YouTube restores.
+`readYTVolume()` in popup.js uses `chrome.scripting.executeScript` to call `#movie_player`'s own `getVolume()`/`isMuted()` API (falling back to reading `video.volume` directly if the player API isn't available). This is the authoritative current state — not `content.js`'s in-memory `currentVolume` or `chrome.storage.local`, both of which are relayed state that can lag behind a volume change made directly on the player (e.g. dragging the in-page widget) if that relay hiccups. `chrome.storage`/the message relay are only used as a fallback when the DOM read itself fails (e.g. the player isn't ready yet), and boost mode overrides the DOM read since the native player caps at 100% even while boosted.
+
+**Historical note:** this DOM-read function was present in the design from early on but was, at one point, missing from the actual `popup.js` — leaving the popup dependent solely on the storage/message relay, which could go stale specifically for player-driven changes (popup→player writes still worked, since that path is direct). Restored 2026-09-03.
 
 ---
 
@@ -112,7 +117,7 @@ If `allowSet` is `false` and YouTube tries `video.volume = 0.23`, the setter sil
 - YouTube API changes — if `#movie_player`, `.ytp-volume-panel`, or `yt-player-volume` localStorage key are renamed, things break
 - AudioContext requires user gesture — boost may fail on fresh tab with no interaction
 - `allowSet` 80ms window — if YouTube's restore happens after 80ms, the prototype patch still blocks it (that's fine), but our `player.setVolume` call within the window should complete synchronously
-- SPA navigation — `MutationObserver` in content.js handles re-injection of the player widget; `yt-navigate-finish` / `onStateChange` events trigger `reApply()`
+- SPA navigation — `MutationObserver` in content.js handles re-injection of the player widget; `yt-navigate-finish` / `onStateChange` events trigger `reApply()`. The observer only runs while the widget is actually missing (`watchForPlayer()`) — it disconnects the instant `tryInjectUI()` succeeds and only re-arms around `yt-navigate-finish`, rather than watching `document.body` for the extension's whole lifetime
 
 ---
 

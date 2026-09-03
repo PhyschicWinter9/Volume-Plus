@@ -119,6 +119,7 @@
 
       /* Volume number */
       .vol-display {
+        position: relative;
         text-align: center;
         background: var(--surface);
         border: 1px solid var(--border);
@@ -128,6 +129,35 @@
         transition:
           border-color 0.3s,
           background 0.3s;
+        cursor: default;
+      }
+
+      .mute-btn {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1;
+        cursor: pointer;
+        color: var(--muted);
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .mute-btn:hover {
+        background: var(--accent-dim);
+        color: var(--accent);
+      }
+      .mute-btn.muted {
+        color: var(--red);
       }
 
       .vol-display.boosted {
@@ -437,7 +467,8 @@
       </div>
     </div>
 
-    <div class="vol-display">
+    <div class="vol-display" id="volDisplay">
+      <button type="button" class="mute-btn" id="muteBtn" title="Mute / unmute" aria-label="Mute or unmute">🔊</button>
       <div class="vol-num normal" id="volNum">100</div>
       <div class="vol-unit">% volume</div>
     </div>
