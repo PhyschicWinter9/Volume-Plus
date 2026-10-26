@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/impeccable/SKILL.md",
+      "computedHash": "aaf0acc7371b0ad192091d37cf9c66f6252c47251b96958baa4a2bbe451d1447"
+    },
+    "intent": {
+      "source": "ghaida/intent",
+      "sourceType": "github",
+      "skillPath": "skills/intent/SKILL.md",
+      "computedHash": "84cc0d001932b09623d7211754ab87f7264d93fe2fa864d6b3046e2b4d1aebef"
+    },
+    "ponytail": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail/SKILL.md",
+      "computedHash": "9feedbe220d039ba30720217b3fce16214817063fb54a48843d89368c86554e9"
+    }
+  }
+}

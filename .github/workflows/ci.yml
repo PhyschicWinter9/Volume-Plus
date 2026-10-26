@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read          # least privilege: CI never writes to the repo or the stores
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Manifest / package validation
+        run: npm run validate
+      - name: Unit + integration tests with coverage thresholds
+        run: npm run test:coverage
+      - name: Install bundled Chromium
+        run: npx playwright install --with-deps chromium
+      - name: DSP rendering tests (OfflineAudioContext)
+        run: npm run test:dsp
+      - name: Extension E2E (fixture page, no live YouTube)
+        run: npm run test:e2e
+      - name: Dependency audit (production deps; the extension ships none)
+        run: npm audit --omit=dev
+      - name: Package the extension (runtime files only)
+        run: |
+          zip -r volume-plus.zip manifest.json src icons
+          unzip -l volume-plus.zip | tee zip-contents.txt
+          ! grep -E "node_modules|tests/|\.map$" zip-contents.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: volume-plus-${{ github.sha }}
+          path: volume-plus.zip
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/

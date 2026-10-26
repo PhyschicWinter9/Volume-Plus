@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Fixture video</title></head>
+<body>
+<!-- Deterministic stand-in for the YouTube watch page: same selectors the extension relies on
+     (#movie_player + setVolume/getVolume/unMute/isMuted, .ytp-volume-area, .ytp-mute-button,
+     .html5-main-video) and a "restore saved volume to 100%" step like the real player does. -->
+<input id="search" placeholder="search">
+<div id="movie_player" class="html5-video-player" tabindex="0" style="width:400px;height:240px">
+  <video class="html5-main-video" src="/fixture.wav" loop playsinline></video>
+  <div class="ytp-chrome-controls"><div class="ytp-volume-area"><button class="ytp-mute-button" aria-label="Mute"></button><div class="ytp-volume-panel"></div></div></div>
+</div>
+<button id="swap">swap video</button>
+<button id="spa">spa navigate</button>
+<script>
+  window.__vol = [];                     // every volume the <video> ever reports
+  const player = document.getElementById('movie_player');
+  function wire(v) {
+    v.addEventListener('volumechange', () => window.__vol.push(Math.round(v.volume * 100) / 100));
+    v.addEventListener('loadstart', () => { v.volume = 1; });          // YouTube "restoring" 100%
+    v.addEventListener('canplay', () => { player.setVolume(100); });   // ...and again via its API
+  }
+  const first = player.querySelector('video');
+  player.setVolume = (x) => { player.querySelector('video').volume = x / 100; };
+  player.getVolume = () => Math.round(player.querySelector('video').volume * 100);
+  player.unMute = () => { player.querySelector('video').muted = false; };
+  player.isMuted = () => player.querySelector('video').muted;
+  wire(first);
+  first.play().catch(() => {});
+
+  document.getElementById('swap').onclick = () => {          // player replaces its <video> (ads, quality switch)
+    const old = player.querySelector('video');
+    const next = document.createElement('video');
+    next.className = 'html5-main-video'; next.src = '/fixture.wav'; next.loop = true;
+    wire(next); old.replaceWith(next); next.play().catch(() => {});
+  };
+  document.getElementById('spa').onclick = () => {           // SPA navigation: controls rebuilt, event fired
+    const area = document.querySelector('.ytp-volume-area');
+    area.replaceWith(Object.assign(document.createElement('div'), { className: 'ytp-volume-area', innerHTML: '<button class="ytp-mute-button"></button>' }));
+    document.dispatchEvent(new Event('yt-navigate-finish'));
+  };
+</script>
+</body>
+</html>

@@ -1,24 +1,39 @@
 {
   "manifest_version": 3,
   "name": "Volume+",
-  "version": "2.2.1",
-  "description": "Custom volume control for YouTube — go beyond 100%. By relaxlikes.com",
-  "permissions": ["storage", "tabs", "scripting"],
-  "host_permissions": ["https://www.youtube.com/*"],
+  "version": "2.3.0",
+  "description": "Per-tab YouTube volume up to 300%, with a peak limiter, equalizer, editable presets and keyboard shortcuts.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
   "action": {
     "default_popup": "src/popup.html",
     "default_title": "RELAXLIKES Volume+"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["src/injected.js"],
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "src/injected.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["src/content.js"],
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "src/lib/state.js",
+        "src/lib/settings.js",
+        "src/lib/audio-graph.js",
+        "src/content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -31,5 +46,47 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "minimum_chrome_version": "111",
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "commands": {
+    "volume-up": {
+      "suggested_key": {
+        "default": "Alt+Up"
+      },
+      "description": "Volume up"
+    },
+    "volume-down": {
+      "suggested_key": {
+        "default": "Alt+Down"
+      },
+      "description": "Volume down"
+    },
+    "toggle-mute": {
+      "suggested_key": {
+        "default": "Alt+M"
+      },
+      "description": "Mute / unmute"
+    },
+    "reset-volume": {
+      "suggested_key": {
+        "default": "Alt+0"
+      },
+      "description": "Reset volume to 100%"
+    },
+    "preset-1": {
+      "description": "Apply preset 1"
+    },
+    "preset-2": {
+      "description": "Apply preset 2"
+    },
+    "preset-3": {
+      "description": "Apply preset 3"
+    },
+    "preset-4": {
+      "description": "Apply preset 4"
+    }
   }
 }

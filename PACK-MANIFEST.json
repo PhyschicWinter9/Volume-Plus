@@ -1,0 +1,40 @@
+{
+  "pack_name": "RELAXLIKES Volume+ Claude Code Skills & Docs",
+  "pack_version": "1.1-ponytail",
+  "created_at": "2026-10-26",
+  "repository": "https://github.com/PhyschicWinter9/Volume-Plus",
+  "repo_baseline": "public main manifest 2.2.1",
+  "scope": "knowledge pack; no feature implementation or executed tests",
+  "files": [
+    ".claude/skills/browser-extension-engineering/SKILL.md",
+    ".claude/skills/extension-quality-assurance/SKILL.md",
+    ".claude/skills/extension-security/SKILL.md",
+    ".claude/skills/volume-ponytail-workflow/SKILL.md",
+    ".claude/skills/volume-state-management/SKILL.md",
+    ".claude/skills/volume-ui-accessibility/SKILL.md",
+    ".claude/skills/web-audio-engineering/SKILL.md",
+    "README-INSTALL.md",
+    "docs/ARCHITECTURE.md",
+    "docs/AUDIO-ENGINE.md",
+    "docs/CLAUDE-ADDENDUM.md",
+    "docs/FEATURE-SPECS.md",
+    "docs/PONYTAIL-INTEGRATION.md",
+    "docs/README.md",
+    "docs/REFERENCE-INDEX.md",
+    "docs/RELEASE-CHECKLIST.md",
+    "docs/SECURITY-AND-PRIVACY.md",
+    "docs/STATE-AND-MIGRATION.md",
+    "docs/TEST-MATRIX.md",
+    "docs/TESTING-STRATEGY.md",
+    "docs/UI-UX-SPEC.md",
+    "prompts/CLAUDE-MASTER-PROMPT.md",
+    "scripts/validate_knowledge_pack.py"
+  ],
+  "ponytail": {
+    "official_plugin_repo": "https://github.com/DietrichGebert/ponytail",
+    "official_plugin_bundled": false,
+    "local_companion_skill": ".claude/skills/volume-ponytail-workflow/SKILL.md",
+    "instructions": "docs/PONYTAIL-INTEGRATION.md",
+    "mode_recommended": "full"
+  }
+}

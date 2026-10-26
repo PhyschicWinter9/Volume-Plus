@@ -2,6 +2,38 @@
 
 ---
 
+## [2.3.0] — 2026-10-26
+
+### Added
+- **Independent per-tab volume** — each YouTube tab owns its volume, mute, last-nonzero level, limiter and EQ settings (kept in the tab's `sessionStorage`, which survives refresh and SPA navigation). Changing tab A never changes tab B. A brand-new tab starts at the global *new-tab default* (migrated from your old volume; change it with "Use current volume for new tabs"); a duplicated / script-opened tab inherits its opener's state; a link-opened (`noopener`) tab starts at the default.
+- **Reliable volume sync** — one authoritative state per document with a monotonic `rev`, a per-load `epoch`, per-client sequence numbers and acknowledgements that only report what actually reached the player/audio graph. Popup, in-player widget, keyboard, YouTube's speaker button / `m` key and browser shortcuts all converge. Pending, applied and failed states are shown instead of assuming success.
+- **Peak limiter** — dynamics compressor plus a soft-clip ceiling after it, cross-faded in/out without clicks. On by default. Measured, not a promise of zero clipping (see docs/AUDIO-ENGINE.md).
+- **Keyboard shortcuts** — browser-wide commands (default Alt+↑ / Alt+↓ / Alt+M / Alt+0, plus four unbound preset slots), configurable key step (1–25 %), in-player ↑/↓ (Shift = 1 %), ignored while typing. The popup lists the live bindings and links to the browser's shortcut page.
+- **Editable presets** — add, rename, edit, delete, reorder, restore defaults; validated 0–300 %, ≤12 presets, unique names; stored globally, applied to the selected tab only.
+- **Mini equalizer** — Bass / Mid / Treble (±12 dB), Flat / Bass Boost / Vocal / Treble Boost / Custom profiles, enable/bypass, flat reset; smoothed parameters.
+- Mute is now a separate flag: the volume you muted at is kept and restored.
+- Popup: native-control layout with labelled controls, `aria-live` status, keyboard-reachable `<details>` sections, reduced-motion support, ≥4.5:1 text contrast.
+- Tooling: Vitest unit/integration tests, Playwright DSP-rendering and extension E2E tests, coverage thresholds, manifest validator, GitHub Actions CI.
+
+### Changed
+- **Popup and in-player widget redesigned** (same dark + lime identity): volume is a large left-aligned value with one status line that says whether it is really applied; the slider draws the 100 % line and tints the boost zone amber; Boost mode moved onto the first screen; Sound, Presets and Settings are collapsed rows whose closed summary shows the current state ("Limiter on · EQ Flat"); emoji and text glyphs replaced by drawn icons; muted state is no longer shown in red (red now means failure only); system font stack with tabular numerals; body text >= 12 px; selection, scrollbar and focus rings themed.
+- **Permissions reduced to `storage` only** (removed `tabs` and `scripting`); host access is still only `https://www.youtube.com/*`. The popup no longer injects scripts; it talks to the tab's content script over a port.
+- **No third-party network requests** — the popup no longer loads Google Fonts (system font stack; DM Mono/Syne dropped).
+- `localStorage["rl_volume"]` is no longer a live, origin-shared volume. It is only the synchronous *new-tab default* seed for `injected.js`; a tab's own state is read from its `sessionStorage`.
+- Protocol between `content.js` and `injected.js` is now `RL_APPLY {pct 0–100, rev}` / `RL_APPLIED {rev, pct}` with strict validation (page-forged events can only set that page's own native volume).
+- `injected.js` also enforces the tab's level on `loadstart`/`play`, so audio no longer starts at 100 % before the extension finishes loading.
+
+### Fixed
+- `injected.js` used to persist every change to the origin-shared `localStorage.rl_volume`, so the most recently touched tab's volume leaked into every refreshed tab.
+- Volume above 100 % is no longer reported as applied when the Web Audio graph is unavailable or suspended.
+- A media element is never routed into an AudioContext that is not running (that would silence it).
+
+### Upgrade notes
+- After updating, **reload open YouTube tabs** (old content scripts are orphaned by the extension update).
+- Legacy keys (`rl_volume`, `rl_boost`, `rl_last_nonzero`) are read once into `rl_settings` (schema 2) and left in place so a downgrade keeps working.
+
+---
+
 ## [2.2.1] — 2026-09-03
 
 ### Fixed
