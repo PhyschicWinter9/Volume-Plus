@@ -51,6 +51,8 @@ const openPopup = async (ctx, extId) => {
 };
 const tabIds = (pop) => pop.evaluate(async () => Object.fromEntries((await chrome.tabs.query({ url: 'https://www.youtube.com/*' })).map((t) => [new URL(t.url).searchParams.get('v'), t.id])));
 const send = (pop, id, msg) => pop.evaluate(([i, m]) => chrome.tabs.sendMessage(i, m), [id, msg]);
+// diag.gain is the live AudioParam value; it ramps (setTargetAtTime), so assert it by polling, never right after a command.
+const gainLands = (pop, id, want) => expect.poll(async () => (await send(pop, id, { type: 'GET_STATE' })).diag.gain, { timeout: 4000 }).toBeCloseTo(want, 2);
 const nativeVol = (page) => page.evaluate(() => Math.round(document.querySelector('video').volume * 100));
 const setSettings = (pop, over) => pop.evaluate(async (o) => { const s = await RL.settings.load(); await RL.settings.save({ ...s, ...o }); }, over);
 
@@ -87,13 +89,14 @@ test('E02 per-tab isolation (V04/V06): A=50%, B=200% boosted, neither affects th
   expect(rb.applied).toMatchObject({ pct: 200, status: 'ok' });
   expect(await nativeVol(a)).toBe(50);
   expect(await nativeVol(b)).toBe(100);                       // native locked, gain does the rest
-  expect(rb.diag).toMatchObject({ status: 'running', ctxState: 'running', gain: 2, sources: 1 });
+  expect(rb.diag).toMatchObject({ status: 'running', ctxState: 'running', sources: 1 });
+  await gainLands(pop, ids.B, 2);
   expect(ra.diag.sources).toBe(0);                            // A never created an audio graph
   // change A again: B untouched
   await send(pop, ids.A, { type: 'PATCH', patch: { volume: 20 } });
   const sb = await send(pop, ids.B, { type: 'GET_STATE' });
   expect(sb.state.volume).toBe(200);
-  expect(sb.diag.gain).toBe(2);
+  await gainLands(pop, ids.B, 2);
   expect(await a.evaluate(() => JSON.parse(sessionStorage.getItem('rl_tab')).volume)).toBe(20);
   expect(await b.evaluate(() => JSON.parse(sessionStorage.getItem('rl_tab')).volume)).toBe(200);
   await setSettings(pop, { boost: false });
@@ -129,7 +132,7 @@ test('E04 rapid out-of-order intents: 100→250→60→300 settles on the last (
   expect(rs.every((r) => r.ok)).toBe(true);
   expect(fin.state.volume).toBe(300);
   expect(fin.applied).toMatchObject({ rev: fin.state.rev, pct: 300, status: 'ok' });
-  expect(fin.diag.gain).toBe(3);
+  await gainLands(pop, id, 3);
   // stale seq from the same client is dropped
   await send(pop, id, { type: 'PATCH', patch: { volume: 10 }, clientId: 'x', seq: 9 });
   const late = await send(pop, id, { type: 'PATCH', patch: { volume: 90 }, clientId: 'x', seq: 4 });
@@ -147,7 +150,9 @@ test('E05 limiter, EQ and bypass reach the live graph (V19/V21); limiter shows r
   await send(pop, id, { type: 'PATCH', patch: { volume: 300, eq: { enabled: true, profile: 'bass' } } });
   await a.waitForTimeout(400);
   const on = await send(pop, id, { type: 'GET_STATE' });
-  expect(on.diag).toMatchObject({ limiter: true, eq: [6, 0, 0], gain: 3, status: 'running' });
+  expect(on.diag).toMatchObject({ limiter: true, status: 'running' });
+  await gainLands(pop, id, 3);
+  await expect.poll(async () => (await send(pop, id, { type: 'GET_STATE' })).diag.eq, { timeout: 4000 }).toEqual([6, 0, 0]);
   console.log('live compressor reduction at 300% on a 0.5-amplitude tone:', on.diag.reductionDb, 'dB');
   expect(on.diag.reductionDb).toBeLessThan(-1);
   const off = await send(pop, id, { type: 'PATCH', patch: { limiter: false, eq: { enabled: false } } });
@@ -174,7 +179,7 @@ test('E06 replaced <video> (V09) and SPA navigation (V10): one widget, one sourc
   const s = await send(pop, id, { type: 'GET_STATE' });
   expect(s.state.volume).toBe(180);
   expect(s.diag).toMatchObject({ status: 'running', sources: 1 });
-  expect(s.diag.gain).toBeCloseTo(1.8, 5);
+  await gainLands(pop, id, 1.8);
   expect(await nativeVol(a)).toBe(100);
   expect(s.applied).toMatchObject({ rev: s.state.rev, status: 'ok', pct: 180 });
   await setSettings(pop, { boost: false });
